@@ -1,0 +1,765 @@
+---
+title: 'Network and Platform Analytics: Amazon'
+author: "R Collis"
+date: "October 2019"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    
+---
+
+# 1. Data Download
+
+This assignment utilises data from Amazon. The nodes in this network are Amazon products, including books, movies, and music. The edges in this network represent hyperlinks from a given product's landing page to the landing pages of those products most frequently co-purchased with the given product.
+
+The following data files have been used:
+
+* **graph complete.txt:** The edges of the graph in the form from ! to. Each line is an edge, with the origin node and destination node separated by a space. The data set includes 366,987 product nodes and 1,231,400 co-purchase edges.
+
+* **graph subset rank1000.txt:** A subset of the complete network, containing only products with salesrank under 1,000. Each line is an edge where each node is separated by a space. The data set includes 1,355 product nodes and 2,611 co-purchase edges. Note: Multiple products may share the same salesrank in our data, so there are more than 1,000 products with salesrank under 1,000.
+
+* **graph subset rank1000 cc.txt:** The largest connected component in the network of prod-ucts with salesrank under 1,000. Each line is an edge where each node is separated by a space. The data set includes 292 product nodes and 604 co-purchase edges.
+
+* **id to titles.txt:** Maps the integer ids (primary keys) used to identify nodes to the actual names of the products. There are two space-separated felds in this fle: the integer id and the string title.
+
+The raw data are available from the Stanford Network Analysis Project (http://snap.stanford.edu/data/amazon-meta.html) and were collected in summer 2006. The original dataset contains 548,552 records of books, movies, and music sold on Amazon.com, along with product categories, reviews, and information on co-purchased products. The data has been cleaned and altered the data as follows:
+
+* **graph complete.txt:** Removed discontinued products, and removed edges involving prod-ucts for which no metadata was available. That is, only kept only products that had a co-purchase link to another product in the dataset.
+
+* **graph subset rank1000.txt:** In addition to the above, kept only products that had a salesrank between 0 and 1,000, and kept only co-purchase links between items in this reduced set of products.
+
+* **graph subset rank1000 cc.txt:** In addition to the above, we kept only the largest connected component from this graph.
+
+
+```{r Import libraries, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE}
+
+# Creating a vector of packages used within.  
+packages <- c('caTools','chron',
+              'DMwR2','doParallel','dplyr',
+              'e1071', 'extrafont',
+              'ggplot2','gridExtra', 'ggthemes',
+              'here',
+              'igraph',
+              'janitor',
+              'knitr',
+              'lme4','lubridate', 'lattice',
+              'MASS',
+              'neuralnet', 'nnet', 'network',
+              'plotly', 'parcoords',
+              'randomForest','readr', 'readxl','rlang','rpart','rpart.plot',
+              'stats',
+              'tidyverse',
+              'scales', 'sna', 'shiny', 'scales',
+              'cowplot',
+              'reshape2')
+# Checking for package installations on the system and installing if not found.
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))  
+}
+# Including the packages for use.
+for(package in packages){
+  library(package, character.only = TRUE)
+}
+#Ensure wd is set to current location by using here()
+setwd(here::here())
+
+```
+
+# 2. Network Structure Visualization
+
+## Task 1
+
+Plot the network using the information in the file graph_subset_rank1000.txt. Note that this is not the complete network, but only a subset of edges between top-ranked products. By visualizing the graph, you get an idea of the structure of the network you will be working on. In addition to plotting, comment on anything interesting you observe.
+
+
+```{r Load text file, echo=TRUE, include=TRUE}
+
+# Path to the txt files
+path <- file.path("data", "graph_subset_rank1000.txt")
+
+# Import the graph_subset_rank1000.txt file
+
+graph_subset_rank1000 <- read.table(path, 
+                                    header=FALSE,
+                                    sep = " ")
+
+head(graph_subset_rank1000)
+                                     
+```
+
+```{r Convert to igraph object, echo=TRUE, include=TRUE}
+
+# Convert to dataframe
+graph_subset_rank1000_df <- as.data.frame(graph_subset_rank1000)
+
+# Convert dataframe to an igraph object
+graph_subset_rank1000_ig <- graph_from_data_frame(graph_subset_rank1000_df, directed = FALSE)
+
+```
+
+Before analysing the network utilising a better configuration, the raw data is displayed in a simple plot
+
+```{r Plot network standard, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Plot using standard plot
+plot(graph_subset_rank1000_ig)
+
+```
+
+To better convey insights from the network, an improved style format has been utilsied, with a number of different layout options utilised:
+
+* Auto layout
+* Layout with MDS
+* Tree layout
+* Nicely layout
+* Circle layout
+* Kamada Kawai layout
+
+
+```{r Edit plot features, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using auto plot
+plot(graph_subset_rank1000_ig,
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout.auto(graph_subset_rank1000_ig))
+     
+```
+
+```{r Layout as mds, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot the graph object in a MDS layout
+plot(graph_subset_rank1000_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_with_mds(graph_subset_rank1000_ig))     
+
+```
+
+
+```{r Layout as tree, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot the graph object in a Tree layout
+plot(graph_subset_rank1000_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_as_tree(graph_subset_rank1000_ig))     
+
+```
+
+
+```{r Layout as nicely, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout nicely
+plot(graph_subset_rank1000_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_nicely(graph_subset_rank1000_ig))     
+
+```
+
+```{r Layout as circle, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout circle
+plot(graph_subset_rank1000_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_in_circle(graph_subset_rank1000_ig))     
+
+```
+
+```{r Layout as kamada kawai, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout kamada kawai
+plot(graph_subset_rank1000_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout.kamada.kawai(graph_subset_rank1000_ig))     
+
+```
+
+In addition to visually displaying the network, there are a number of attributes that can be calculated to describe the network. These include:
+
+* Number of vertices
+* Number of edges
+* Edge density
+* Average distance between vertices
+* Transitivity 
+
+```{r Details on network 1, echo=TRUE, include=TRUE}
+
+# Number of vertices
+Gorder1000 <- gorder(graph_subset_rank1000_ig)
+paste("The number of vertices is", Gorder1000)
+
+# Number of Edges
+Size1000 <- gsize(graph_subset_rank1000_ig)
+paste("The number of edges is", Size1000)
+
+# Edge density
+ED1000 <- round(edge_density(graph_subset_rank1000_ig),3)
+paste("The edge density is", ED1000)
+
+# Average distance between between vertices
+AD1000 <- round(mean_distance(graph_subset_rank1000_ig, directed = FALSE),3)
+paste("The average distance between vertices is", AD1000)
+
+# Transitivity
+T1000 <- round(transitivity(graph_subset_rank1000_ig),3)
+paste("The transitivity is", T1000)
+
+```
+
+**Observations**
+
+* The network has 1,355 vertices and 2,611 edges
+* Transitivity is 0.411, indicating that there are a medium number of triangles in the network compared to total number of connected triples of nodes. i.e. clustering of the network is neither very high or very low  
+* There are a significant number of clusters in the network and they appear to vary significantly in size; some small with two-three nodes with others having significantly more
+* The 'nicely' layout appears to show a number of circular network structures where a > b > c > d > a
+* The 'tree' layout shows there are a number of linear layouts where the network results in a specific endpoint  
+* The 'tree' layout also appears to show that there is a one significantly larger network, the node that will be assessed from graph subset rank1000 cc.txt   
+
+## Task 2
+
+Now, use the file graph subset rank1000 cc.txt to plot only the largest connected compo-nent in the above network. You should be able to reuse your code from above on the new data.
+
+```{r Load graph_subset_rank1000_cc.txt, echo=TRUE, include=TRUE}
+
+# Path to the txt files
+path <- file.path("data", "graph_subset_rank1000_cc.txt")
+
+# Import the graph_subset_rank1000_cc.txt file
+
+graph_subset_rank1000_cc <- read.table(path, 
+                                    header=FALSE,
+                                    sep = " ")
+
+# Convert to dataframe
+graph_subset_rank1000_cc_df <- as.data.frame(graph_subset_rank1000_cc)
+
+# Convert dataframe to an igraph object
+graph_subset_rank1000_cc_ig <- graph_from_data_frame(graph_subset_rank1000_cc_df, directed = FALSE)
+
+```
+
+Fo this exercise I have used three layouts to assess the largest node in the network:
+
+* Nicely layout
+* Kamada Kawai layout
+* Layout with MDS
+
+```{r Layout as nicely cc, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout nicely
+plot(graph_subset_rank1000_cc_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_nicely(graph_subset_rank1000_cc_ig))     
+
+```
+
+```{r Layout as kamada kawai cc, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout kamada kawai
+plot(graph_subset_rank1000_cc_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout.kamada.kawai(graph_subset_rank1000_cc_ig))     
+
+```
+
+
+```{r Layout as mds cc, echo=TRUE, include=TRUE, fig.width=20, fig.height=15}
+
+# Black background
+par(bg = "black")
+
+# Plot using layout kamada kawai
+plot(graph_subset_rank1000_cc_ig, 
+        # === Vertex
+        vertex.color = rgb(0.8,0.4,0.3,0.8), 
+        vertex.frame.color = "white",
+        vertex.shape="circle",
+        vertex.size=8,
+        # === Vertax labels
+        vertex.label.color="white",
+        vertex.label.font=2,
+        vertex.label.cex=0.4,
+        vertex.label.dist=0,
+        vertex.label.degree=0,
+        # === Edge
+        edge.color="white",
+        edge.width=4,
+        edge.arrow.size=1,
+        edge.arrow.width=1,
+        edge.lty="solid",
+        edge.curved=0.3,
+        # Layout
+        layout = layout_with_mds(graph_subset_rank1000_cc_ig))     
+
+```
+
+```{r Details on network 2, echo=TRUE, include=TRUE}
+
+# Number of vertices
+Gorder1000_cc <- gorder(graph_subset_rank1000_cc_ig)
+paste("The number of vertices is", Gorder1000_cc)
+
+# Number of Edges
+Size1000_cc <- gsize(graph_subset_rank1000_cc_ig)
+paste("The number of edges is", Size1000_cc)
+
+# Edge density
+ED1000_cc <- round(edge_density(graph_subset_rank1000_cc_ig),3)
+paste("The edge density is", ED1000_cc)
+
+# Average distance between between vertices
+AD1000_cc <- round(mean_distance(graph_subset_rank1000_cc_ig, directed = FALSE),3)
+paste("The average distance between vertices is", AD1000_cc)
+
+# Transitivity
+T1000_cc <- round(transitivity(graph_subset_rank1000_cc_ig),3)
+paste("The transitivity is", T1000_cc)
+
+```
+
+
+**Observations**
+
+The layouts used cleary show a single connected network. There also appear to be a number of key nodes that tie the network together
+
+
+# 3. Data Analysis
+
+The rest of the assignment uses the complete graph contained in the file graph complete.txt and the title file id to titles.csv
+
+## Task 1
+
+Plot the out-degree distribution of our dataset (x-axis number of similar products, y-axis number of nodes). That is, for each product a, count the number of outgoing links to another product page b such that a -> b.
+
+```{r Load graph_complete, echo=TRUE, include=TRUE}
+
+# Path to the txt files
+path <- file.path("data", "graph_complete.txt")
+
+# Import the graph_complete.txt file
+graph_complete <- read.table(path, 
+                                    header=FALSE,
+                                    sep = " ")
+
+# Convert to data frame
+graph_complete_df <- as.data.frame(graph_complete)
+
+# Create list of unique nodes across inbound and outbound columns
+unique_nodes <- unique(data.frame(V1=unlist(graph_complete_df, use.names = FALSE)))
+
+# Convert to factors
+unique_nodes_v <- as.numeric(unique_nodes[["V1"]])
+unique_nodes_f <- as.factor(unique_nodes_v)
+
+# Get standalone list of out nodes in V1 and convert to a factor
+out_nodes <- graph_complete_df[, 1, drop = FALSE]
+out_nodes_v <- as.numeric(out_nodes[["V1"]])
+out_nodes_f <- as.factor(out_nodes_v)
+
+# Use table function to determine frequency of outbound nodes against unique list
+table_nodes_out <- as.data.frame(table(unique_nodes_f[match(out_nodes_f, unique_nodes_f)]))
+
+summary(table_nodes_out$Freq)
+
+```
+
+
+```{r Geom_Density chart of number of out connections, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Load windows font calibra
+windowsFonts("Calibra" = windowsFont("Calibra"))
+
+# Create RC chart attributes
+rc_chartattributes1 <- theme_bw() +
+                        theme(text=element_text(family="Calibra")) +
+                        theme(panel.border = element_blank(),
+                          panel.grid.major = element_blank(),
+                          panel.grid.minor = element_blank(),
+                          axis.line = element_line(colour = "gray"),
+                          axis.ticks.x = element_blank(),
+                          axis.ticks.y = element_blank(),
+                          plot.title = element_text(color = "black", size = 30, face = "bold"),
+                          plot.subtitle = element_text(color = "gray45", size = 17),
+                          plot.caption = element_text(color = "gray45", size = 10, face = "italic", hjust = 0))
+
+
+table_nodes_out_chart <- ggplot(data = table_nodes_out) +
+                                geom_histogram(aes(Freq), bins = 6, fill = "turquoise", position = "identity", alpha = 0.4) +
+                                labs(title = "Out-degree distribution of Amazon data set", 
+                                        subtitle = "The maximum number of outbound conenctions is 5. However, most nodes appear to have 4 outbound connections. \n Some nodes have zero outbound", 
+                                        caption = "http://snap.stanford.edu/data/amazon-meta.html",
+                                        x = "Number of similar products", 
+                                        y = "Number of nodes") +
+                                scale_x_continuous(labels = comma) +
+                                rc_chartattributes1
+                                
+table_nodes_out_chart
+
+```
+
+## Task 2
+
+```{r}
+
+# Get standalone list of in nodes in V2 and convert to a factor
+in_nodes <- graph_complete_df[, 2, drop = FALSE]
+in_nodes_v <- as.numeric(in_nodes[["V2"]])
+in_nodes_f <- as.factor(in_nodes_v)
+
+# Use table function to determine frequency of outbound nodes against unique list
+table_nodes_in <- as.data.frame(table(unique_nodes_f[match(in_nodes_f, unique_nodes_f)]))
+
+summary(table_nodes_in$Freq)
+
+```
+
+```{r Geom_Density chart of number of in connections, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Create histogram
+table_nodes_in_chart <- ggplot(data = table_nodes_in) +
+                                geom_histogram(aes(Freq), binwidth = 1, fill = "turquoise", position = "identity", alpha = 0.4) +
+                                labs(title = "In-degree distribution of Amazon data set", 
+                                        subtitle = "The distribution is very different for inbound; some products have over 500 inbound. \n However, a significant number appear to have zero or one connection", 
+                                        caption = "http://snap.stanford.edu/data/amazon-meta.html",
+                                        x = "Number of similar products", 
+                                        y = "Number of nodes") +
+                                scale_x_continuous(labels = comma) +
+                                rc_chartattributes1
+                                
+table_nodes_in_chart
+
+```
+
+**Observations**
+
+* The out-degree analysis provides insights about the purchase path entry, with the maximum number of outbound links being 5 across all nodes. Whilst there is a small number of nodes with zero outbound connections, the majority of nodes have at least one outbound 
+* The in-degree analysis focusses on cross-selling items; in this instance the in-degree distribution is very diverse with a wide range illustrating a high variation in popularity of products
+* Distribution of the in-degree edges shows a peak around zero, meaning that most products are not being purchased as crosssales linked to by any other page
+* However, having a maximum in-degree of 549 shows that top selling products that are succesfully co-purchased a lot of times 
+* Overall though, the with a majority of nodes having zero inbound edges, this means that for most products it is not as likely that suggested products will be as much of interest compared to consumers searching for their desired product initially
+
+
+## Task 3
+
+Transform the x-axis of the previous graph to log scale, to get a better understanding of the distribution. Note here that you should have some products with 0 inbound links. This means that using the log of the x-axis will fail since log(0) will not be valid. Due to this, you should replace 0 with 0:1. Comment on what you observe.
+
+```{r Replace 0 with 0.1 to avoid issues with Log values, echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+
+# Create duplicate colum on which to undertake transformation
+table_nodes_in$Freq2 <- table_nodes_in$Freq
+
+# Replace 0 with 0.1 to avoid log issues
+table_nodes_in[table_nodes_in$Freq2 == 0, ] = 0.1
+
+# Check 0.1 in now minimum in summary
+summary(table_nodes_in$Freq2)
+
+```
+
+
+```{r Add Log value column, echo=TRUE, include=TRUE}
+
+# Log Frequency column
+table_nodes_in$Freqlog <- log(table_nodes_in$Freq2)
+
+```
+
+
+```{r Geom_Density chart of number of in connections logged, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Load windows font calibra
+windowsFonts("Calibra" = windowsFont("Calibra"))
+
+# Create RC chart attributes
+rc_chartattributes1 <- theme_bw() +
+                        theme(text=element_text(family="Calibra")) +
+                        theme(panel.border = element_blank(),
+                          panel.grid.major = element_blank(),
+                          panel.grid.minor = element_blank(),
+                          axis.line = element_line(colour = "gray"),
+                          axis.ticks.x = element_blank(),
+                          axis.ticks.y = element_blank(),
+                          plot.title = element_text(color = "black", size = 30, face = "bold"),
+                          plot.subtitle = element_text(color = "gray45", size = 20),
+                          plot.caption = element_text(color = "gray45", size = 10, face = "italic", hjust = 0))
+
+
+table_nodes_in_log_chart <- ggplot(data = table_nodes_in) +
+                                geom_histogram(aes(Freqlog), binwidth = 1, fill = "turquoise", position = "identity", alpha = 0.4) +
+                                labs(title = "Log In-degree distribution of Amazon data set", 
+                                        subtitle = "Logging the frequency shows most products are being purchased directly", 
+                                        caption = "http://snap.stanford.edu/data/amazon-meta.html",
+                                        x = "Number of similar products", 
+                                        y = "Number of nodes") +
+                                scale_x_continuous(labels = comma) +
+                                rc_chartattributes1
+                                
+table_nodes_in_log_chart
+
+```
+
+**Observations**
+
+* The logged chart shows that most products have zero inbound edges and are thus purchased directly and not as a cross-sell product. However, there does still appear to be success in cross-selling with a number of items sold through co-purchasing
+
+
+## Task 4
+
+Compute the average number of inbound co-purchase links, the standard deviation, and the maximum. Comment on the result.
+
+```{r Average number of inbound co-links, echo=TRUE, include=TRUE}
+
+# Average number of inbound
+mean(table_nodes_in$Freq)
+
+```
+
+```{r Standard deviation number of inbound co-links, echo=TRUE, include=TRUE}
+
+# Standard deviation of inbound
+sd(table_nodes_in$Freq)
+
+```
+
+```{r Maximum number of inbound co-links, echo=TRUE, include=TRUE}
+
+# Maximum number of inbound
+max(table_nodes_in$Freq)
+
+```
+
+Observations
+
+* The mean of 3.4 indicates that on average each product is successfully converted to a purchase as a cross sale 3.4 times through an in-bound co-purchase
+* The product with the highest inbound number of 549 indicates that this is a very succesful cross-sell product that has wide appeal to consumers intially searching for a single product
+* The high standard deviation reflects the spread seen in the co-purchase data; whilst most products have no inbound links, there are a small number that have a large cross-sell value against 300+ initial products. This is what is driving the mean of 3.4 given the charts produced show that the majority of nodes have zero inbound connections The large tail with a small number of items purchased in high volume as co-purchase products is driving the mean  
+
+## Task 5
+
+Report the names of the 10 products with the most inbound co-purchase links.
+
+```{r Top 10 inbound, echo=TRUE, include=TRUE}
+
+# Order by descending 
+table_nodes_in_sorted <- table_nodes_in[order(table_nodes_in$Freq, decreasing = TRUE), ]
+
+# Create a subset for the top 10
+table_nodes_in_sorted_top10 <- head(table_nodes_in_sorted, n=10)
+
+# Change column names
+names(table_nodes_in_sorted_top10) <- c("id", "Freq")
+
+```
+
+
+```{r Load product name to ID, echo=TRUE, include=TRUE, message=FALSE, warning=FALSE}
+
+# Load product name txt files
+id_to_titles <- read_csv("data/id_to_titles.csv")
+
+# Convert to data frame
+id_to_titles_df <- as.data.frame(id_to_titles)
+
+```
+
+
+```{r Merge data sets, echo=TRUE, include=TRUE,fig.width=15, fig.height=10 }
+
+# Merge data sets
+Top_10_names <- merge(table_nodes_in_sorted_top10[, c("id", "Freq")],
+                            id_to_titles_df[,c("id", "title")])
+
+# Rank by descending order
+Top_10_names <- Top_10_names[order(Top_10_names$Freq, decreasing = TRUE), ]
+
+# Maintain order for charting
+Top_10_names$title <- factor(Top_10_names$title, levels = Top_10_names$title[order(Top_10_names$Freq)])
+
+# Create bar chart for top 10
+Top_10_names_chart <- ggplot(data = Top_10_names) +
+                                geom_bar(aes(x = title, y = Freq), stat="identity", fill = "gold1") + 
+                                labs(title = "Top 10 inbound co-purchase", 
+                                      subtitle = "Laura has the most inbound links in the Top 10 ", 
+                                      caption = "http://snap.stanford.edu/data/amazon-meta.html",
+                                      x = "Product Title", 
+                                      y = "Number of Inbound Co-Purchase Links") + 
+                                scale_y_continuous(labels = comma) +
+                                rc_chartattributes1
+               
+Top_10_names_chart + coord_flip()
+
+```
+
+**Observations**
+
+* Laura is the most popular co-purchased item, with 549 inbound links
+* The item The Tempest makes the top 10 with c.200 inbound links
+
+
